@@ -24,6 +24,9 @@ class Calculator {
 	
 		for (const line of lines) {
 			const data = line.split(';');
+			if (!line) {
+				continue;
+			}
 	
 			const price = parseFloat(data[0]);
 
@@ -44,15 +47,18 @@ class Calculator {
 			const hour = parseInt(data[2]);
 			const month = date.getMonth();
 	
-			const matchingBuyTarrifs = config.BUY_TIME_TARRIFS[config.MONTH_TO_TARRIF_SEASON[config.MONTH_MAP[month]]];
-	
 			let buyTarrifForThisHour;
-	
-			for (const tarrif of matchingBuyTarrifs) {
-				let isBetweenHours = tarrif.minHour <= hour && tarrif.maxHour >= hour;
-				if (isBetweenHours) {
-					buyTarrifForThisHour = tarrif.fee;
-					break;
+
+			if (config.BATTERY_SIZE_KWH >= 1000) {
+				buyTarrifForThisHour = 17;
+			} else {
+				const matchingBuyTarrifs = config.BUY_TIME_TARRIFS[config.MONTH_TO_TARRIF_SEASON[config.MONTH_MAP[month]]];
+				for (const tarrif of matchingBuyTarrifs) {
+					let isBetweenHours = tarrif.minHour <= hour && tarrif.maxHour >= hour;
+					if (isBetweenHours) {
+						buyTarrifForThisHour = tarrif.fee;
+						break;
+					}
 				}
 			}
 			
@@ -100,76 +106,80 @@ class Calculator {
 		const dataSet = Calculator.makeDataSet(config, csvFile);
 
 		const allBuySellCandidates = Calculator.findAllBuySellCandidates(config, dataSet.list, from, to);
-		const allCombinations = Calculator.findAllCombinations(config, allBuySellCandidates, config.MAX_CHARGES_PER_DAY);
+		const allCombinations = Calculator.findAllCombinations(config, [], config.MAX_BUY_SELLS_PER_DAY, [], allBuySellCandidates, 0);
 
 		const sortedBestCombinations = allCombinations.sort((a, b) => b.profit - a.profit);
 
 		let topCombination = sortedBestCombinations[0];
-
-		if (topCombination) {
-			console.log(`*** Bedste kombinationer fundet i perioden ${from.toLocaleDateString('da-DK')} - ${to.toLocaleDateString('da-DK')}  ***`);
-			for (const buySell of topCombination.buySells) {
-				console.log(`Køb: ${buySell.buyDate.toLocaleString('da-DK')} - Sælg: ${buySell.sellDate.toLocaleString('da-DK')} - profit: ${(buySell.profit/100).toFixed(2)} kr. per KW`);
-			}
 		
-			console.log('*** Total Profit ***');
-			console.log(`${(topCombination.totalProfit/100).toFixed(2)} kr. - antal kW = ${config.KWH_SOLD_PER_TRANSACTION}`);
+		if (topCombination) {
+			topCombination.buySells = topCombination.buySells.sort((a, b) => a.buyDate - b.buyDate);
+			Calculator.outputSuccess(from, to, config, topCombination);
 		} else {
-			console.log('*** Ingen kombination fundet ***');
+			const errorMessage = 'Ingen kombination fundet';
+			if (config.OUTPUT === 'JSON') {
+				console.error({ error: 'not_found', message: errorMessage });
+			} else {
+				console.log(`*** ${errorMessage} - Periode: ${from.toLocaleDateString('da-DK')} - ${to.toLocaleDateString('da-DK')} ***`);
+			}
 		}
 	
-	
 	}
-	
-	/**
-	 * @param {object} config Config object, containing tarrifs etc.
-	 * @param {any[]} buySellCandidates List of "BuySell"-objects
-	 * @param {integer} maxAmountOfTransactionsInACombination Max amount of transactions that can be in one combination
-	 * @returns 
-	 */
-	static findAllCombinations(config, buySellCandidates, maxAmountOfTransactionsInACombination = 1) {
-		/** Combination keys  */
-		const combinations = [];
-	
-		/* Our first loop is the "base" transactions, so is included. If we want to do 3 charges per day,
-		 * Then we run our main loop, and run the other loop twice.
-		*/
-	
-		for (let i = 0; i < buySellCandidates.length; i++) {
-			let candidates = [];
-			const mainCandidate = buySellCandidates[i];
 
-			if (maxAmountOfTransactionsInACombination === 1) {
-				combinations.push(Calculator.makeCombination(config, [ mainCandidate ]));
-				continue;
+	static outputSuccess(from, to, config, topCombination) {
+		switch (config.OUTPUT) {
+			case 'DEFAULT': {
+				console.log(`*** Bedste kombinationer fundet - Periode: ${from.toLocaleDateString('da-DK')} - ${to.toLocaleDateString('da-DK')} ***`);
+				for (const buySell of topCombination.buySells) {
+					console.log(`Køb: ${buySell.buyDate.toLocaleString('da-DK')} - Sælg: ${buySell.sellDate.toLocaleString('da-DK')} - profit: ${(buySell.profit/100).toFixed(2)} kr. per KW`);
+				}
+			
+				console.log('*** Total Profit ***');
+				console.log(`${(topCombination.totalProfit/100).toFixed(2)} kr. - antal kW = ${config.KWH_SOLD_PER_TRANSACTION} batteristørrelse = ${config.BATTERY_SIZE_KWH}kw`);
+				break;
+			}
+			case 'JSON': {
+				console.log(JSON.stringify(topCombination));
+				break;
 			}
 
-			candidates.push(mainCandidate);
-	
-			for (let j = i + 1; j < buySellCandidates.length; j++) {
-				
-				const candidate = buySellCandidates[j];
-	
-				const foundOverlappingCandidate = candidates.find(o => Calculator.areBuySellsOverlapping(o, candidate));
+		}
+	}
 
-				if (!foundOverlappingCandidate) {
-					if (candidates.length < maxAmountOfTransactionsInACombination) {
-						candidates.push(candidate);
-						if (candidates.length === maxAmountOfTransactionsInACombination) {
-							combinations.push(Calculator.makeCombination(config, candidates));
-							candidates = [];
-							candidates.push(mainCandidate);
-						}
-					}
+	static findAllCombinations(config, combinationList, amountOfCombinations, previousBuySells = [], allBuySells, index) {
+		if (amountOfCombinations == 0) {
+			return;
+		}
+	
+		for (let i = index; i < allBuySells.length; i++) {
+			const currentBuySell = allBuySells[i];
+			if (i > 0) {
+				const previousBuySell = previousBuySells[previousBuySells.length - 1];
+				/* If the current and previous buy sell are overlapping, there is no reason to go further ahead with buy sells
+				 * because if a + b is an invalid combination, then a + b + c/d/e will always be invalid as well.
+				*/
+				if (previousBuySell && Calculator.areBuySellsOverlapping(previousBuySell, currentBuySell)) {
+					continue;
 				}
 			}
-			if (candidates.length > 0) {
-				combinations.push(Calculator.makeCombination(config, candidates));
+
+			const newBuySells = [];
+
+			for (const buySell of previousBuySells) {
+				newBuySells.push(buySell);
 			}
+			newBuySells.push(currentBuySell);
+
+			const thisCombination = this.makeCombination(config, newBuySells);
+			
+			// let thisCombination = combinationCopy + buySells[i];
+			combinationList.push(thisCombination);
+			Calculator.findAllCombinations(config, combinationList, amountOfCombinations - 1, newBuySells, allBuySells, i + 1);
 		}
-	
-		return combinations;
+
+		return combinationList;
 	}
+
 
 	static makeCombination(config, buySells) {
 		let profit = 0;

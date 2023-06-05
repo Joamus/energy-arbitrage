@@ -1,9 +1,10 @@
 module.exports = {
 	GOVERNMENT_TARRIF: 0,
 	SELL_TARRIF: 1,
-	MAX_CHARGES_PER_DAY: 2,
+	MAX_BUY_SELLS_PER_DAY: 5,
 	MIN_PROFIT_PER_KW: 50,
 	KWH_SOLD_PER_TRANSACTION: 12,
+	BATTERY_SIZE_KWH: 12,
 	MONTH_MAP: {
 		0: 'JANUARY',
 		1: 'FEBRURARY',
@@ -32,6 +33,7 @@ module.exports = {
 		FEBRURARY: 'WINTER',
 		MARCH: 'WINTER'
 	},
+	BUY_TARRIF_ABOVE_1_MWH: 17,
 	BUY_TIME_TARRIFS: {
 		SUMMER: [
 			{
@@ -77,5 +79,6 @@ module.exports = {
 				fee: 28.30
 			}
 		]
-	}
+	},
+	OUTPUT: 'DEFAULT'
 };

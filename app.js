@@ -11,9 +11,11 @@ const optionDefinitions = [
 	{ name: 'from', type: String },
 	{ name: 'to', type: String },
 	{ name: 'filename', type: String },
-
-	{ name: 'src', type: String, multiple: true, defaultOption: true },
-	{ name: 'timeout', alias: 't', type: Number }
+	{ name: 'battery_size', type: Number, defaultValue: config.BATTERY_SIZE_KWH },
+	{ name: 'kwh_per_transaction', type: Number, defaultValue: config.KWH_SOLD_PER_TRANSACTION },
+	{ name: 'max_trades', type: Number, defaultValue: config.MAX_BUY_SELLS_PER_DAY },
+	{ name: 'output', type: String, defaultValue: 'DEFAULT'},
+	{ name: 'min_profit_per_transaction', type: Number, defaultValue: config.MIN_PROFIT_PER_KW}
 ];
 
 const options = commandLineArgs(optionDefinitions);
@@ -29,6 +31,15 @@ if (options.to) {
 	config.TO_DATE = new Date(parsedFrom);
 }
 
+config.BATTERY_SIZE_KWH = options.battery_size;
+config.KWH_SOLD_PER_TRANSACTION = options.kwh_per_transaction;
+config.MAX_BUY_SELLS_PER_DAY = options.max_trades;
+config.OUTPUT = options.output.toUpperCase();
+config.MIN_PROFIT_PER_KW = options.min_profit_per_transaction;
+
+if (!['DEFAULT', 'JSON'].includes(config.OUTPUT)) {
+	throw Error('Output given is invalid');
+}
 
 
 if (isNaN(config.FROM_DATE.getDate())) {
